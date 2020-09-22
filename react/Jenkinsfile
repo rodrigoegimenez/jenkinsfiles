@@ -1,0 +1,56 @@
+pipeline {
+    agent any
+    environment {
+        FULL_BRANCH_NAME = "${env.GIT_BRANCH}"
+        BRANCH_NAME = FULL_BRANCH_NAME.substring(FULL_BRANCH_NAME.lastIndexOf('/') + 1, FULL_BRANCH_NAME.length())
+        BUILD_NUMBER = "${env.BUILD_NUMBER}"
+        COMMIT = "${env.GIT_COMMIT}"
+        REACT_APP_GIT_COMMIT = "${env.GIT_COMMIT}"
+        REACT_APP_GIT_BRANCH = BRANCH_NAME.substring(BRANCH_NAME.('/') + 1, BRANCH_NAME.length())
+        ARTIFACT_NAME = "react-build"
+        MAIL_RECIPIENTS = "yourmail@example.com"
+        CONTAINER_NAME = "example-react"
+    }
+    stages {
+        stage('Build') {
+            steps {
+                echo 'Building...'
+                sh "yarn"
+                sh "yarn build"
+            }
+        }
+        stage('Create artifact') {
+            steps {
+                sh "tar -vcJf ${ARTIFACT_NAME}-${VERSION}.txz build"
+            }
+        }
+        stage('Deploy to static nginx server') {
+            steps {
+                echo 'Creating nginx docker container...'
+                sh 'docker build -t ${CONTAINER_NAME}:${BUILD_NUMBER} .'
+                sh 'docker run --name ${CONTAINER_NAME} -d ${CONTAINER_NAME}:${BUILD_NUMBER}'
+            }
+        }
+        
+    }
+    post {
+        success {
+            slackSend channel: 'jenkins',
+                color: 'good',
+                message: "The pipeline ${currentBuild.fullDisplayName} completed successfully. View logs at ${env.BUILD_URL}."
+        }
+        failure {
+            mail to: "${MAIL_RECIPIENTS}",
+                subject: "Failed Pipeline: ${currentBuild.fullDisplayName}",
+                body: "The pipeline ${currentBuild.fullDisplayName} failed.  View logs at ${env.BUILD_URL}."
+            slackSend channel: 'jenkins',
+                color: 'bad',
+                message: "The pipeline ${currentBuild.fullDisplayName} failed.  View logs at ${env.BUILD_URL}."
+        }
+        changed {
+            mail to: "${MAIL_RECIPIENTS}",
+                subject: "Something changed with Pipeline: ${currentBuild.fullDisplayName}",
+                body: "Something changed with Pipeline: ${currentBuild.fullDisplayName}. View logs at ${env.BUILD_URL}"
+        }
+    }
+}
